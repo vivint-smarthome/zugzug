@@ -2,7 +2,7 @@
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 #[allow(unused)]
-#[allow(improper_ctypes)] // We assume that bindgen knows what it's doing.
+#[allow(clippy::all)]
 #[cfg(feature = "callback")]
 pub mod callback {
   include!(concat!(env!("OUT_DIR"), "/callback.rs"));
@@ -12,7 +12,7 @@ pub mod callback {
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 #[allow(unused)]
-#[allow(improper_ctypes)] // We assume that bindgen knows what it's doing.
+#[allow(clippy::all)]
 #[cfg(feature = "sync")]
 pub mod sync {
   include!(concat!(env!("OUT_DIR"), "/sync.rs"));

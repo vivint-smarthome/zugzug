@@ -1,10 +1,13 @@
 use std::env;
 use std::path::PathBuf;
+
+#[cfg(feature = "static")]
 use std::process::Command;
 
 fn main() {
   // TODO: cross compile
   // TODO: use variables for paths, etc.
+  // TODO: make this stuff more portable (e.g. no `Command`)
   let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
   #[cfg(feature = "static")]
@@ -27,6 +30,7 @@ fn main() {
     .clang_arg("-Ivendor/c-core")
     .clang_arg("-Ivendor/c-core/posix")
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
+    .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
     .expect("Unable to generate callback bindings");
 
@@ -49,6 +53,7 @@ fn main() {
     .clang_arg("-Ivendor/c-core")
     .clang_arg("-Ivendor/c-core/posix")
     .clang_arg("-DPUBNUB_CALLBACK_API=0")
+    .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
     .expect("Unable to generate sync bindings");
 

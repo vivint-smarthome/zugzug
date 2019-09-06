@@ -23,18 +23,17 @@ struct SubscribeUserData<T> {
   tx: Sender<Result<T, ClientError>>,
 }
 
-#[allow(unused)] // Because we want to keep the CStrings from being dropped while we have pointers to them.
 pub struct SubscribeClient<T> {
   ctx: *mut pubnub_t,
   // We hold on to this so that we can free the memory later.
   user_data: *mut SubscribeUserData<T>,
   // We pass refs of these to C land.  We keep them around here so they will not be freed until the `Client` is dropped.
-  channel: CString,
-  auth_key: CString,
-  publish_key: CString,
-  subscribe_key: CString,
-  group: CString,
-  client_uuid: CString,
+  _channel: CString,
+  _auth_key: CString,
+  _publish_key: CString,
+  _subscribe_key: CString,
+  _group: CString,
+  _client_uuid: CString,
 }
 
 unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
@@ -51,7 +50,10 @@ unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
         let c = std::ffi::CStr::from_ptr(ptr);
         let s = c.to_str().unwrap(); // TODO: return error if that is needed.
 
-        serde_json::from_str::<T>(s).map_err(|e| ClientError::ParseError(e))
+        serde_json::from_str::<T>(s).map_err(|e| {
+          println!("Unable to parse message {:?}", e);
+          ClientError::ParseError
+        })
       } else {
         Err(ClientError::NullPointerError)
       }
@@ -97,12 +99,12 @@ impl<'a, T: Send + Sync + Deserialize<'a>> SubscribeClient<T> {
     // TODO: verify that I'm not invalidating the above pointers at this point.
     Ok(Self {
       ctx,
-      channel,
-      auth_key,
-      publish_key,
-      subscribe_key,
-      group,
-      client_uuid,
+      _channel: channel,
+      _auth_key: auth_key,
+      _publish_key: publish_key,
+      _subscribe_key: subscribe_key,
+      _group: group,
+      _client_uuid: client_uuid,
       user_data,
     })
   }
@@ -189,18 +191,17 @@ unsafe extern "C" fn publish_callback(
   }
 }
 
-#[allow(unused)]
 pub struct PublishFuture {
   // This would be a oneshot, but we can't get ownership of the tx end in the callback (to send the message), so we use mpsc as if it were a oneshot.
   user_data: Option<*mut PublishFutureUserData>,
   rx: Option<Receiver<Result<(), ClientError>>>,
   ctx: *mut pubnub_t,
   channel: CString,
-  auth_key: CString,
-  publish_key: CString,
-  subscribe_key: CString,
-  group: CString,
-  client_uuid: CString,
+  _auth_key: CString,
+  _publish_key: CString,
+  _subscribe_key: CString,
+  _group: CString,
+  _client_uuid: CString,
   msg: CString,
   started: bool,
 }
@@ -215,8 +216,8 @@ impl PublishFuture {
     group: CString,
     client_uuid: CString,
   ) -> Self {
-    let msg = serde_json::to_string(&msg).unwrap();
-    let msg_c = CString::new(msg).unwrap();
+    let msg_string = serde_json::to_string(&msg).unwrap();
+    let msg_c = CString::new(msg_string).unwrap();
     let ctx = unsafe {
       let ctx = pubnub_alloc();
       pubnub_init(ctx, publish_key.as_ptr(), subscribe_key.as_ptr());
@@ -231,11 +232,11 @@ impl PublishFuture {
       rx: None,
       ctx,
       channel,
-      auth_key,
-      publish_key,
-      subscribe_key,
-      group,
-      client_uuid,
+      _auth_key: auth_key,
+      _publish_key: publish_key,
+      _subscribe_key: subscribe_key,
+      _group: group,
+      _client_uuid: client_uuid,
       msg: msg_c,
     }
   }
@@ -271,18 +272,16 @@ impl Future for PublishFuture {
       }
       self.user_data = Some(user_data);
       Ok(Async::NotReady)
-    } else {
-      if let Some(ref mut rx) = self.rx {
-        match rx.poll() {
-          Ok(Async::Ready(Some(Ok(())))) => Ok(Async::Ready(())),
-          Ok(Async::Ready(Some(Err(e)))) => Err(e),
-          Ok(Async::Ready(None)) => Ok(Async::NotReady),
-          Ok(Async::NotReady) => Ok(Async::NotReady),
-          Err(()) => Err(ClientError::PollError),
-        }
-      } else {
-        panic!("rx ought to have been defined here");
+    } else if let Some(ref mut rx) = self.rx {
+      match rx.poll() {
+        Ok(Async::Ready(Some(Ok(())))) => Ok(Async::Ready(())),
+        Ok(Async::Ready(Some(Err(e)))) => Err(e),
+        Ok(Async::Ready(None)) => Ok(Async::NotReady),
+        Ok(Async::NotReady) => Ok(Async::NotReady),
+        Err(()) => Err(ClientError::PollError),
       }
+    } else {
+      panic!("rx ought to have been defined here");
     }
   }
 }
@@ -290,7 +289,7 @@ impl Future for PublishFuture {
 #[derive(Debug)]
 pub enum ClientError {
   NullPointerError,
-  ParseError(serde_json::Error),
+  ParseError,
   PollError,
   PubNub { code: pubnub_res },
 }
@@ -299,7 +298,7 @@ impl std::fmt::Display for ClientError {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match self {
       ClientError::NullPointerError => write!(f, "PubNub client null pointer error"),
-      ClientError::ParseError(e) => e.fmt(f),
+      ClientError::ParseError => write!(f, "PubNub client parse error"),
       ClientError::PollError => write!(f, "PubNub client poll error"),
       ClientError::PubNub { code } => write!(f, "PubNub client error with code {}", code), // TODO: it would be nice to do these codes as an enum, but bindgen does not recommend directly building enums, as we do not own the c code.
     }
@@ -308,11 +307,6 @@ impl std::fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    match self {
-      ClientError::NullPointerError => None,
-      ClientError::ParseError(e) => e.source(),
-      ClientError::PollError => None,
-      ClientError::PubNub { code: _ } => None,
-    }
+    None
   }
 }
