@@ -1,7 +1,7 @@
 use futures::stream::Stream;
-use zugzug::*;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use zugzug::*;
 
 #[derive(StructOpt)]
 struct Opt {

@@ -12,8 +12,19 @@ fn main() {
 
   #[cfg(feature = "static")]
   {
-    Command::new("cp").args(&["-rf", "vendor/c-core", &format!("{}", out_path.join("c-core").display())]).status().unwrap();
-    Command::new("make").current_dir(out_path.join("c-core")).args(&["-f", "posix.mk"]).status().unwrap();
+    Command::new("cp")
+      .args(&[
+        "-rf",
+        "vendor/c-core",
+        &format!("{}", out_path.join("c-core").display()),
+      ])
+      .status()
+      .unwrap();
+    Command::new("make")
+      .current_dir(out_path.join("c-core"))
+      .args(&["-f", "posix.mk"])
+      .status()
+      .unwrap();
     println!("cargo:rustc-link-search={}", out_path.join("c-core/posix").display());
   }
 
@@ -21,7 +32,13 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      Command::new("cp").args(&[&format!("{}", out_path.join("c-core/posix/pubnub_callback.a").display()), &format!("{}", out_path.join("c-core/posix/libpubnub_callback.a").display())]).status().unwrap();
+      Command::new("cp")
+        .args(&[
+          &format!("{}", out_path.join("c-core/posix/pubnub_callback.a").display()),
+          &format!("{}", out_path.join("c-core/posix/libpubnub_callback.a").display()),
+        ])
+        .status()
+        .unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_callback");
     }
 
@@ -34,7 +51,9 @@ fn main() {
     .generate()
     .expect("Unable to generate callback bindings");
 
-    callback_bindings.write_to_file(out_path.join("callback.rs")).expect("Couldn't write bindings");
+    callback_bindings
+      .write_to_file(out_path.join("callback.rs"))
+      .expect("Couldn't write bindings");
 
     #[cfg(feature = "dynamic")]
     println!("cargo:rustc-link-lib=pubnub_callback");
@@ -44,7 +63,13 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      Command::new("cp").args(&[&format!("{}", out_path.join("c-core/posix/pubnub_sync.a").display()), &format!("{}", out_path.join("c-core/posix/libpubnub_sync.a").display())]).status().unwrap();
+      Command::new("cp")
+        .args(&[
+          &format!("{}", out_path.join("c-core/posix/pubnub_sync.a").display()),
+          &format!("{}", out_path.join("c-core/posix/libpubnub_sync.a").display()),
+        ])
+        .status()
+        .unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_sync");
     }
 
@@ -57,7 +82,9 @@ fn main() {
     .generate()
     .expect("Unable to generate sync bindings");
 
-    sync_bindings.write_to_file(out_path.join("sync.rs")).expect("Couldn't write bindings");
+    sync_bindings
+      .write_to_file(out_path.join("sync.rs"))
+      .expect("Couldn't write bindings");
 
     #[cfg(feature = "dynamic")]
     println!("cargo:rustc-link-lib=pubnub_sync");

@@ -50,10 +50,7 @@ unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
         let c = std::ffi::CStr::from_ptr(ptr);
         let s = c.to_str().unwrap(); // TODO: return error if that is needed.
 
-        serde_json::from_str::<T>(s).map_err(|e| {
-          println!("Unable to parse message {:?}", e);
-          ClientError::ParseError
-        })
+        serde_json::from_str::<T>(s).map_err(|e| ClientError::ParseError(JsonError { err: e }))
       } else {
         Err(ClientError::NullPointerError)
       }
@@ -289,7 +286,7 @@ impl Future for PublishFuture {
 #[derive(Debug)]
 pub enum ClientError {
   NullPointerError,
-  ParseError,
+  ParseError(JsonError),
   PollError,
   PubNub { code: pubnub_res },
 }
@@ -298,7 +295,7 @@ impl std::fmt::Display for ClientError {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match self {
       ClientError::NullPointerError => write!(f, "PubNub client null pointer error"),
-      ClientError::ParseError => write!(f, "PubNub client parse error"),
+      ClientError::ParseError(e) => write!(f, "PubNub client parse error: {}", e),
       ClientError::PollError => write!(f, "PubNub client poll error"),
       ClientError::PubNub { code } => write!(f, "PubNub client error with code {}", code), // TODO: it would be nice to do these codes as an enum, but bindgen does not recommend directly building enums, as we do not own the c code.
     }
@@ -307,6 +304,25 @@ impl std::fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    None
+    match self {
+      ClientError::ParseError(e) => e.source(),
+      _ => None,
+    }
+  }
+}
+#[derive(Debug)]
+pub struct JsonError {
+  err: serde_json::Error,
+}
+
+impl std::fmt::Display for JsonError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    self.err.fmt(f)
+  }
+}
+
+impl std::error::Error for JsonError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.err.source()
   }
 }
