@@ -1,0 +1,17 @@
+[package]
+name = "zugzug-sys"
+version = "0.1.0"
+authors = ["Jason Hills <jason.hills@vivint.com>"]
+edition = "2018"
+links = "pubnub_callback"
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "*"
+
+[features]
+static = []
+dynamic = []
+sync = []
+callback = []

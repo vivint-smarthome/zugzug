@@ -1,0 +1,22 @@
+[package]
+name = "zugzug"
+version = "0.1.0"
+authors = ["Jason Hills <jason.hills@vivint.com>"]
+edition = "2018"
+
+[dependencies]
+futures = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+tokio = "*"
+zugzug-sys = { path = "./zugzug-sys", features = ["callback"] }
+
+[dev-dependencies]
+structopt = "*"
+
+[features]
+static = ["zugzug-sys/static"]
+dynamic = ["zugzug-sys/dynamic"]
+
+[workspace]
+members = ["zugzug-sys"]
