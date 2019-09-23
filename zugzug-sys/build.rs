@@ -1,31 +1,53 @@
-use std::env;
-use std::path::PathBuf;
+use regex::Regex;
+use ruplacer::{query::Query, DirectoryPatcher};
 
-#[cfg(feature = "static")]
+use std::env;
+use std::fs::{create_dir, remove_dir_all};
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+  println!("cargo:rerun-if-changed=build.rs");
+
   // TODO: cross compile
   // TODO: use variables for paths, etc.
   // TODO: make this stuff more portable (e.g. no `Command`)
   let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
+  remove_dir_all(&out_path).unwrap();
+  create_dir(&out_path).unwrap();
+
+  let upstream_build_dir = out_path.join("c-core");
+
+  let upstream_build_dir_posix = upstream_build_dir.join("posix");
+
+  Command::new("cp")
+    .args(&["-r", "vendor/c-core", &upstream_build_dir.display().to_string()])
+    .status()
+    .unwrap();
+
+  DirectoryPatcher::new(upstream_build_dir_posix.join("posix.mk"), Default::default())
+    .patch(&Query::Regex(
+      Regex::new(r"CFLAGS =.*").unwrap(),
+      "${0}\nCFLAGS += -fPIC".to_owned(),
+    ))
+    .unwrap();
+
+  DirectoryPatcher::new(upstream_build_dir.join("lib/"), Default::default())
+    .patch(&Query::Regex(
+      Regex::new(r"MD5_(Update|Init|Final)\b").unwrap(),
+      "${0}_vendor".to_owned(),
+    ))
+    .unwrap();
+
   #[cfg(feature = "static")]
   {
-    Command::new("cp")
-      .args(&[
-        "-rf",
-        "vendor/c-core",
-        &format!("{}", out_path.join("c-core").display()),
-      ])
-      .status()
-      .unwrap();
     Command::new("make")
-      .current_dir(out_path.join("c-core"))
-      .args(&["-f", "posix.mk"])
+      .current_dir(upstream_build_dir_posix.clone())
+      .args(&["pubnub_sync.a", "pubnub_callback.a", "-f", "posix.mk"])
       .status()
       .unwrap();
-    println!("cargo:rustc-link-search={}", out_path.join("c-core/posix").display());
+    println!("cargo:rustc-link-search={}", upstream_build_dir_posix.display());
   }
 
   #[cfg(feature = "callback")]
@@ -34,8 +56,8 @@ fn main() {
     {
       Command::new("cp")
         .args(&[
-          &format!("{}", out_path.join("c-core/posix/pubnub_callback.a").display()),
-          &format!("{}", out_path.join("c-core/posix/libpubnub_callback.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("pubnub_callback.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("libpubnub_callback.a").display()),
         ])
         .status()
         .unwrap();
@@ -43,9 +65,9 @@ fn main() {
     }
 
     let callback_bindings = bindgen::Builder::default()
-    .header("vendor/c-core/posix/pubnub_callback.h")
-    .clang_arg("-Ivendor/c-core")
-    .clang_arg("-Ivendor/c-core/posix")
+    .header(format!("{}/pubnub_callback.h", upstream_build_dir_posix.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
@@ -65,8 +87,8 @@ fn main() {
     {
       Command::new("cp")
         .args(&[
-          &format!("{}", out_path.join("c-core/posix/pubnub_sync.a").display()),
-          &format!("{}", out_path.join("c-core/posix/libpubnub_sync.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("pubnub_sync.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("libpubnub_sync.a").display()),
         ])
         .status()
         .unwrap();
@@ -74,9 +96,9 @@ fn main() {
     }
 
     let sync_bindings = bindgen::Builder::default()
-    .header("vendor/c-core/posix/pubnub_sync.h")
-    .clang_arg("-Ivendor/c-core")
-    .clang_arg("-Ivendor/c-core/posix")
+    .header(format!("{}/pubnub_sync.h", upstream_build_dir_posix.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=0")
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
