@@ -43,8 +43,8 @@ fn main() {
   #[cfg(feature = "static")]
   {
     Command::new("make")
-      .current_dir(upstream_build_dir.clone())
-      .args(&["-f", "posix.mk"])
+      .current_dir(upstream_build_dir_posix.clone())
+      .args(&["pubnub_sync.a", "pubnub_callback.a", "-f", "posix.mk"])
       .status()
       .unwrap();
     println!("cargo:rustc-link-search={}", upstream_build_dir_posix.display());
