@@ -1,4 +1,5 @@
 use std::env;
+use std::fs::{create_dir, remove_dir_all};
 use std::path::PathBuf;
 
 #[cfg(feature = "static")]
@@ -9,6 +10,9 @@ fn main() {
   // TODO: use variables for paths, etc.
   // TODO: make this stuff more portable (e.g. no `Command`)
   let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+  remove_dir_all(&out_path).unwrap();
+  create_dir(&out_path).unwrap();
 
   #[cfg(feature = "static")]
   {
