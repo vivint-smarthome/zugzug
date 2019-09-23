@@ -1,11 +1,14 @@
+use regex::Regex;
+use ruplacer::{query::Query, DirectoryPatcher};
+
 use std::env;
 use std::fs::{create_dir, remove_dir_all};
 use std::path::PathBuf;
-
-#[cfg(feature = "static")]
 use std::process::Command;
 
 fn main() {
+  println!("cargo:rerun-if-changed=build.rs");
+
   // TODO: cross compile
   // TODO: use variables for paths, etc.
   // TODO: make this stuff more portable (e.g. no `Command`)
