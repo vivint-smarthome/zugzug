@@ -17,22 +17,23 @@ fn main() {
   remove_dir_all(&out_path).unwrap();
   create_dir(&out_path).unwrap();
 
+  let upstream_build_dir = out_path.join("c-core");
+
+  let upstream_build_dir_posix = upstream_build_dir.join("posix");
+
+  Command::new("cp")
+    .args(&["-r", "vendor/c-core", &upstream_build_dir.display().to_string()])
+    .status()
+    .unwrap();
+
   #[cfg(feature = "static")]
   {
-    Command::new("cp")
-      .args(&[
-        "-rf",
-        "vendor/c-core",
-        &format!("{}", out_path.join("c-core").display()),
-      ])
-      .status()
-      .unwrap();
     Command::new("make")
-      .current_dir(out_path.join("c-core"))
+      .current_dir(upstream_build_dir.clone())
       .args(&["-f", "posix.mk"])
       .status()
       .unwrap();
-    println!("cargo:rustc-link-search={}", out_path.join("c-core/posix").display());
+    println!("cargo:rustc-link-search={}", upstream_build_dir_posix.display());
   }
 
   #[cfg(feature = "callback")]
@@ -41,8 +42,8 @@ fn main() {
     {
       Command::new("cp")
         .args(&[
-          &format!("{}", out_path.join("c-core/posix/pubnub_callback.a").display()),
-          &format!("{}", out_path.join("c-core/posix/libpubnub_callback.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("pubnub_callback.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("libpubnub_callback.a").display()),
         ])
         .status()
         .unwrap();
@@ -50,9 +51,9 @@ fn main() {
     }
 
     let callback_bindings = bindgen::Builder::default()
-    .header("vendor/c-core/posix/pubnub_callback.h")
-    .clang_arg("-Ivendor/c-core")
-    .clang_arg("-Ivendor/c-core/posix")
+    .header(format!("{}/pubnub_callback.h", upstream_build_dir_posix.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
@@ -72,8 +73,8 @@ fn main() {
     {
       Command::new("cp")
         .args(&[
-          &format!("{}", out_path.join("c-core/posix/pubnub_sync.a").display()),
-          &format!("{}", out_path.join("c-core/posix/libpubnub_sync.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("pubnub_sync.a").display()),
+          &format!("{}", upstream_build_dir_posix.join("libpubnub_sync.a").display()),
         ])
         .status()
         .unwrap();
@@ -81,9 +82,9 @@ fn main() {
     }
 
     let sync_bindings = bindgen::Builder::default()
-    .header("vendor/c-core/posix/pubnub_sync.h")
-    .clang_arg("-Ivendor/c-core")
-    .clang_arg("-Ivendor/c-core/posix")
+    .header(format!("{}/pubnub_sync.h", upstream_build_dir_posix.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir.display()))
+    .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=0")
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
