@@ -26,6 +26,20 @@ fn main() {
     .status()
     .unwrap();
 
+  DirectoryPatcher::new(upstream_build_dir_posix.join("posix.mk"), Default::default())
+    .patch(&Query::Regex(
+      Regex::new(r"CFLAGS =.*").unwrap(),
+      "${0}\nCFLAGS += -fPIC".to_owned(),
+    ))
+    .unwrap();
+
+  DirectoryPatcher::new(upstream_build_dir.join("lib/"), Default::default())
+    .patch(&Query::Regex(
+      Regex::new(r"MD5_(Update|Init|Final)\b").unwrap(),
+      "${0}_vendor".to_owned(),
+    ))
+    .unwrap();
+
   #[cfg(feature = "static")]
   {
     Command::new("make")
