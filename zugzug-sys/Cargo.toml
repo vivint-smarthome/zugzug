@@ -9,6 +9,7 @@ links = "pubnub_callback"
 
 [build-dependencies]
 bindgen = "*"
+fs_extra = "1.1"
 regex = "1.1.2"
 ruplacer = "0.4.1"
 
