@@ -22,10 +22,11 @@ fn main() {
 
   let upstream_build_dir_posix = upstream_build_dir.join("posix");
 
-  let mut copy_options = CopyOptions::new();
-  copy_options.copy_inside = true;
-  copy_options.overwrite = true;
-  copy_items(&vec!["vendor/c-core"], &upstream_build_dir.display().to_string(), &copy_options).unwrap();
+  copy_items(&vec!["vendor/c-core"], &upstream_build_dir.display().to_string(), &CopyOptions {
+    copy_inside: true,
+    overwrite: true,
+    ..CopyOptions::new()
+  }).unwrap();
 
   DirectoryPatcher::new(upstream_build_dir_posix.join("posix.mk"), Default::default())
     .patch(&Query::Regex(
