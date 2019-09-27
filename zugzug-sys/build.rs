@@ -1,8 +1,9 @@
+use fs_extra::{copy_items, dir::CopyOptions};
 use regex::Regex;
 use ruplacer::{query::Query, DirectoryPatcher};
 
 use std::env;
-use std::fs::{create_dir, remove_dir_all};
+use std::fs::{create_dir, copy, remove_dir_all};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -21,10 +22,10 @@ fn main() {
 
   let upstream_build_dir_posix = upstream_build_dir.join("posix");
 
-  Command::new("cp")
-    .args(&["-r", "vendor/c-core", &upstream_build_dir.display().to_string()])
-    .status()
-    .unwrap();
+  let mut copy_options = CopyOptions::new();
+  copy_options.copy_inside = true;
+  copy_options.overwrite = true;
+  copy_items(&vec!["vendor/c-core"], &upstream_build_dir.display().to_string(), &copy_options).unwrap();
 
   DirectoryPatcher::new(upstream_build_dir_posix.join("posix.mk"), Default::default())
     .patch(&Query::Regex(
@@ -54,13 +55,7 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      Command::new("cp")
-        .args(&[
-          &format!("{}", upstream_build_dir_posix.join("pubnub_callback.a").display()),
-          &format!("{}", upstream_build_dir_posix.join("libpubnub_callback.a").display()),
-        ])
-        .status()
-        .unwrap();
+      copy(upstream_build_dir_posix.join("pubnub_callback.a"), upstream_build_dir_posix.join("libpubnub_callback.a")).unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_callback");
     }
 
@@ -85,13 +80,7 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      Command::new("cp")
-        .args(&[
-          &format!("{}", upstream_build_dir_posix.join("pubnub_sync.a").display()),
-          &format!("{}", upstream_build_dir_posix.join("libpubnub_sync.a").display()),
-        ])
-        .status()
-        .unwrap();
+      copy(upstream_build_dir_posix.join("pubnub_sync.a"), upstream_build_dir_posix.join("libpubnub_sync.a")).unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_sync");
     }
 
