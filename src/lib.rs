@@ -9,6 +9,7 @@ use std::ffi::CString;
 use zugzug_sys::callback::*;
 
 // TODO: see if we can pull out the channel stuff, etc. and subscribe to multiple channels; we probably should just return a `Subscription` which implements `Stream`.  This would also allow us to have a single client that produces subscription `Stream`s and publish `Future`s.
+#[derive(Clone, Debug)]
 pub struct ClientConfig {
   pub auth_key: String,
   pub publish_key: String,
