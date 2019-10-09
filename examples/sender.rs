@@ -26,23 +26,29 @@ struct Stuff {
 
 fn main() {
   let opt = Opt::from_args();
-  let mut client = PublishClient::new(ClientConfig {
+  let client = Client::new(ClientConfig {
     auth_key: opt.auth_key,
     publish_key: opt.publish_key,
     subscribe_key: opt.subscribe_key,
-    channel: opt.channel,
-    group: opt.group,
     client_uuid: opt.client_uuid,
   })
   .unwrap();
+
+  let channel = opt.channel;
+  let group = opt.group;
 
   let mut i = 0;
   loop {
     println!("sending");
     client
-      .publish(Stuff {
-        message: format!("#{}", i),
-      })
+      .publish(
+        &channel,
+        &group,
+        Stuff {
+          message: format!("#{}", i),
+        },
+      )
+      .unwrap()
       .wait()
       .map_err(|e| println!("send error {:?}", e))
       .ok();

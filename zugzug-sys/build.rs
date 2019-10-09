@@ -65,6 +65,7 @@ fn main() {
     .clang_arg(format!("-I{}", upstream_build_dir.display()))
     .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
+    .clang_arg("-DPUBNUB_THREADSAFE=1") // Makes contexts thread-safe, justifying our making them Send and Sync.
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
     .expect("Unable to generate callback bindings");
