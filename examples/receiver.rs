@@ -36,7 +36,7 @@ fn main() {
   let channel = opt.channel;
   let group = opt.group;
 
-  let task = client.unwrap().subscribe::<Stuff>(&channel, &group).unwrap();
+  let task = client.subscribe::<Stuff>(&channel, &group);
 
   tokio::run(task.for_each(|v| {
     match v {
@@ -46,5 +46,5 @@ fn main() {
     Ok(())
   }));
 
-  println!("how did we get here?");
+  panic!("The task should never finish");
 }

@@ -31,8 +31,7 @@ fn main() {
     publish_key: opt.publish_key,
     subscribe_key: opt.subscribe_key,
     client_uuid: opt.client_uuid,
-  })
-  .unwrap();
+  });
 
   let channel = opt.channel;
   let group = opt.group;
@@ -48,7 +47,6 @@ fn main() {
           message: format!("#{}", i),
         },
       )
-      .unwrap()
       .wait()
       .map_err(|e| println!("send error {:?}", e))
       .ok();

@@ -7,7 +7,7 @@ use std::ffi::CString;
 
 use zugzug_sys::callback::*;
 
-#[derive(Clone, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub struct ClientConfig {
   pub auth_key: String,
   pub publish_key: String,
@@ -29,6 +29,7 @@ struct SubscribeUserData<T> {
   tx: Sender<Result<T, ClientError>>,
 }
 
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub struct Client {
   auth_key: CString,
   publish_key: CString,
@@ -37,26 +38,22 @@ pub struct Client {
 }
 
 impl Client {
-  pub fn new(config: ClientConfig) -> Result<Self, std::ffi::NulError> {
-    let auth_key = CString::new(config.auth_key)?;
-    let publish_key = CString::new(config.publish_key)?;
-    let subscribe_key = CString::new(config.subscribe_key)?;
-    let client_uuid = CString::new(config.client_uuid)?;
-    Ok(Self {
+  pub fn new(config: ClientConfig) -> Self {
+    let auth_key = CString::new(config.auth_key).expect("UTF-8 doesn't include nul");
+    let publish_key = CString::new(config.publish_key).expect("UTF-8 doesn't include nul");
+    let subscribe_key = CString::new(config.subscribe_key).expect("UTF-8 doesn't include nul");
+    let client_uuid = CString::new(config.client_uuid).expect("UTF-8 doesn't include nul");
+    Self {
       auth_key,
       publish_key,
       subscribe_key,
       client_uuid,
-    })
+    }
   }
 
-  pub fn subscribe<'a, T: Send + Sync + Deserialize<'a>>(
-    &self,
-    channel: &str,
-    group: &str,
-  ) -> Result<Subscription<T>, std::ffi::NulError> {
-    let channel_c = CString::new(channel)?;
-    let group_c = CString::new(group)?;
+  pub fn subscribe<'a, T: Send + Sync + Deserialize<'a>>(&self, channel: &str, group: &str) -> Subscription<T> {
+    let channel_c = CString::new(channel).expect("UTF-8 doesn't include nul");
+    let group_c = CString::new(group).expect("UTF-8 doesn't include nul");
 
     let config = ChannelConfig {
       auth_key: self.auth_key.clone(),
@@ -67,17 +64,12 @@ impl Client {
       group: group_c,
     };
 
-    Ok(Subscription::new(config))
+    Subscription::new(config)
   }
 
-  pub fn publish<T: Serialize>(
-    &self,
-    channel: &str,
-    group: &str,
-    body: T,
-  ) -> Result<PublishFuture, std::ffi::NulError> {
-    let channel_c = CString::new(channel)?;
-    let group_c = CString::new(group)?;
+  pub fn publish<T: Serialize>(&self, channel: &str, group: &str, body: T) -> PublishFuture {
+    let channel_c = CString::new(channel).expect("UTF-8 doesn't include nul");
+    let group_c = CString::new(group).expect("UTF-8 doesn't include nul");
 
     let config = ChannelConfig {
       auth_key: self.auth_key.clone(),
@@ -89,7 +81,7 @@ impl Client {
     };
 
     // TODO: we may want a context pool as each context consumes significant resources.
-    Ok(PublishFuture::new(config, body))
+    PublishFuture::new(config, body)
   }
 }
 
@@ -108,6 +100,7 @@ pub struct Subscription<T> {
 }
 
 // The pointers in `Subscription` are thread-safe, so we can implement this.
+// See https://www.pubnub.com/docs/posix-c/api-reference-configuration#Thread_safety
 unsafe impl<T> Send for Subscription<T> {}
 
 impl<'a, T: Send + Sync + Deserialize<'a>> Subscription<T> {
@@ -314,7 +307,7 @@ impl Future for PublishFuture {
   }
 }
 
-#[derive(Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub enum ClientError {
   NullPointerError,
   ParseError(JsonError),
@@ -342,7 +335,7 @@ impl std::error::Error for ClientError {
   }
 }
 
-#[derive(Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub struct JsonError {
   err: serde_json::Error,
 }
