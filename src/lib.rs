@@ -153,11 +153,17 @@ impl<'a, T: Send + Sync + Deserialize<'a>> Subscription<T> {
 }
 
 impl<T: std::fmt::Debug> Stream for Subscription<T> {
-  type Item = Result<T, ClientError>;
-  type Error = ();
+  type Item = T;
+  type Error = ClientError;
 
   fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-    self.rx.poll()
+     match self.rx.poll() {
+        Ok(Async::Ready(Some(Ok(t)))) => Ok(Async::Ready(Some(t))),
+        Ok(Async::Ready(Some(Err(e)))) => Err(e),
+        Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
+        Ok(Async::NotReady) => Ok(Async::NotReady),
+        Err(()) => panic!("Received error from an mpsc channel, this shouldn't be possible."),
+     }
   }
 }
 
