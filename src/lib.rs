@@ -39,10 +39,17 @@ pub struct Client {
 
 impl Client {
   pub fn new(config: ClientConfig) -> Self {
-    let auth_key = CString::new(config.auth_key).expect("UTF-8 doesn't include nul");
-    let publish_key = CString::new(config.publish_key).expect("UTF-8 doesn't include nul");
-    let subscribe_key = CString::new(config.subscribe_key).expect("UTF-8 doesn't include nul");
-    let client_uuid = CString::new(config.client_uuid).expect("UTF-8 doesn't include nul");
+    let ClientConfig {
+      auth_key,
+      publish_key,
+      subscribe_key,
+      client_uuid,
+    } = config;
+
+    let auth_key = CString::new(auth_key).expect("UTF-8 doesn't include nul");
+    let publish_key = CString::new(publish_key).expect("UTF-8 doesn't include nul");
+    let subscribe_key = CString::new(subscribe_key).expect("UTF-8 doesn't include nul");
+    let client_uuid = CString::new(client_uuid).expect("UTF-8 doesn't include nul");
     Self {
       auth_key,
       publish_key,
@@ -105,12 +112,14 @@ unsafe impl<T> Send for Subscription<T> {}
 
 impl<'a, T: Send + Sync + Deserialize<'a>> Subscription<T> {
   fn new(config: ChannelConfig) -> Self {
-    let auth_key = config.auth_key;
-    let publish_key = config.publish_key;
-    let subscribe_key = config.subscribe_key;
-    let client_uuid = config.client_uuid;
-    let channel = config.channel;
-    let group = config.group;
+    let ChannelConfig {
+      auth_key,
+      publish_key,
+      subscribe_key,
+      client_uuid,
+      channel,
+      group,
+    } = config;
 
     let (tx, rx) = futures::sync::mpsc::channel::<Result<T, ClientError>>(10);
 
@@ -239,11 +248,20 @@ impl PublishFuture {
   fn new<T: Serialize>(config: ChannelConfig, msg: T) -> Self {
     let msg_string = serde_json::to_string(&msg).unwrap();
     let msg_c = CString::new(msg_string).unwrap();
+    let ChannelConfig {
+      publish_key,
+      subscribe_key,
+      client_uuid,
+      auth_key,
+      channel,
+      group,
+    } = config;
+
     let ctx = unsafe {
       let ctx = pubnub_alloc();
-      pubnub_init(ctx, config.publish_key.as_ptr(), config.subscribe_key.as_ptr());
-      pubnub_set_uuid(ctx, config.client_uuid.as_ptr());
-      pubnub_set_auth(ctx, config.auth_key.as_ptr());
+      pubnub_init(ctx, publish_key.as_ptr(), subscribe_key.as_ptr());
+      pubnub_set_uuid(ctx, client_uuid.as_ptr());
+      pubnub_set_auth(ctx, auth_key.as_ptr());
       ctx
     };
 
@@ -252,12 +270,12 @@ impl PublishFuture {
       user_data: None,
       rx: None,
       ctx,
-      channel: config.channel,
-      _auth_key: config.auth_key,
-      _publish_key: config.publish_key,
-      _subscribe_key: config.subscribe_key,
-      _group: config.group,
-      _client_uuid: config.client_uuid,
+      channel,
+      _auth_key: auth_key,
+      _publish_key: publish_key,
+      _subscribe_key: subscribe_key,
+      _group: group,
+      _client_uuid: client_uuid,
       msg: msg_c,
     }
   }
@@ -307,7 +325,7 @@ impl Future for PublishFuture {
   }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
+#[derive(Debug)]
 pub enum ClientError {
   NullPointerError,
   ParseError(JsonError),
@@ -335,7 +353,7 @@ impl std::error::Error for ClientError {
   }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
+#[derive(Debug)]
 pub struct JsonError {
   err: serde_json::Error,
 }

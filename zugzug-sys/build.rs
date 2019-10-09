@@ -12,7 +12,6 @@ fn main() {
 
   // TODO: cross compile
   // TODO: use variables for paths, etc.
-  // TODO: make this stuff more portable (e.g. no `Command`)
   let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
   remove_dir_all(&out_path).unwrap();
