@@ -26,21 +26,25 @@ struct Stuff {
 
 fn main() {
   let opt = Opt::from_args();
-  let (tx, rx) = futures::sync::mpsc::channel::<Result<Stuff, ClientError>>(4096);
-  let _client = SubscribeClient::start(
-    ClientConfig {
-      auth_key: opt.auth_key,
-      publish_key: opt.publish_key,
-      subscribe_key: opt.subscribe_key,
-      channel: opt.channel,
-      group: opt.group,
-      client_uuid: opt.client_uuid,
-    },
-    tx,
-  );
+  let client = Client::new(ClientConfig {
+    auth_key: opt.auth_key,
+    publish_key: opt.publish_key,
+    subscribe_key: opt.subscribe_key,
+    client_uuid: opt.client_uuid,
+  });
 
-  tokio::run(rx.for_each(|v| {
-    println!("whoa! a message! {:?}", v);
+  let channel = opt.channel;
+  let group = opt.group;
+
+  let task = client.subscribe::<Stuff>(&channel, &group);
+
+  tokio::run(task.for_each(|v| {
+    match v {
+      Ok(i) => println!("whoa! a message! {:?}", i),
+      Err(e) => println!("error {:?}", e),
+    }
     Ok(())
-  }))
+  }));
+
+  panic!("The task should never finish");
 }

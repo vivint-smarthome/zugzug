@@ -3,7 +3,7 @@ use regex::Regex;
 use ruplacer::{query::Query, DirectoryPatcher};
 
 use std::env;
-use std::fs::{create_dir, copy, remove_dir_all};
+use std::fs::{copy, create_dir, remove_dir_all};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -12,7 +12,6 @@ fn main() {
 
   // TODO: cross compile
   // TODO: use variables for paths, etc.
-  // TODO: make this stuff more portable (e.g. no `Command`)
   let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
   remove_dir_all(&out_path).unwrap();
@@ -22,11 +21,16 @@ fn main() {
 
   let upstream_build_dir_posix = upstream_build_dir.join("posix");
 
-  copy_items(&vec!["vendor/c-core"], &upstream_build_dir.display().to_string(), &CopyOptions {
-    copy_inside: true,
-    overwrite: true,
-    ..CopyOptions::new()
-  }).unwrap();
+  copy_items(
+    &vec!["vendor/c-core"],
+    &upstream_build_dir.display().to_string(),
+    &CopyOptions {
+      copy_inside: true,
+      overwrite: true,
+      ..CopyOptions::new()
+    },
+  )
+  .unwrap();
 
   DirectoryPatcher::new(upstream_build_dir_posix.join("posix.mk"), Default::default())
     .patch(&Query::Regex(
@@ -56,7 +60,11 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      copy(upstream_build_dir_posix.join("pubnub_callback.a"), upstream_build_dir_posix.join("libpubnub_callback.a")).unwrap();
+      copy(
+        upstream_build_dir_posix.join("pubnub_callback.a"),
+        upstream_build_dir_posix.join("libpubnub_callback.a"),
+      )
+      .unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_callback");
     }
 
@@ -65,6 +73,7 @@ fn main() {
     .clang_arg(format!("-I{}", upstream_build_dir.display()))
     .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
+    .clang_arg("-DPUBNUB_THREADSAFE=1") // Makes contexts thread-safe, justifying our making them Send and Sync.
     .blacklist_function("strtold") // u128 is not ffi-safe
     .generate()
     .expect("Unable to generate callback bindings");
@@ -81,7 +90,11 @@ fn main() {
   {
     #[cfg(feature = "static")]
     {
-      copy(upstream_build_dir_posix.join("pubnub_sync.a"), upstream_build_dir_posix.join("libpubnub_sync.a")).unwrap();
+      copy(
+        upstream_build_dir_posix.join("pubnub_sync.a"),
+        upstream_build_dir_posix.join("libpubnub_sync.a"),
+      )
+      .unwrap();
       println!("cargo:rustc-link-lib=static=pubnub_sync");
     }
 

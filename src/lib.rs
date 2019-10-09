@@ -3,20 +3,25 @@ use futures::sync::mpsc::{Receiver, Sender};
 use futures::task::Task;
 use futures::{Async, Future};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::ffi::CString;
 
 use zugzug_sys::callback::*;
 
-// TODO: see if we can pull out the channel stuff, etc. and subscribe to multiple channels; we probably should just return a `Subscription` which implements `Stream`.  This would also allow us to have a single client that produces subscription `Stream`s and publish `Future`s.
-#[derive(Clone, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub struct ClientConfig {
   pub auth_key: String,
   pub publish_key: String,
   pub subscribe_key: String,
-  pub channel: String,
-  pub group: String,
   pub client_uuid: String,
+}
+
+struct ChannelConfig {
+  auth_key: CString,
+  publish_key: CString,
+  subscribe_key: CString,
+  client_uuid: CString,
+  channel: CString,
+  group: CString,
 }
 
 struct SubscribeUserData<T> {
@@ -24,17 +29,136 @@ struct SubscribeUserData<T> {
   tx: Sender<Result<T, ClientError>>,
 }
 
-pub struct SubscribeClient<T> {
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
+pub struct Client {
+  auth_key: CString,
+  publish_key: CString,
+  subscribe_key: CString,
+  client_uuid: CString,
+}
+
+impl Client {
+  pub fn new(config: ClientConfig) -> Self {
+    let ClientConfig {
+      auth_key,
+      publish_key,
+      subscribe_key,
+      client_uuid,
+    } = config;
+
+    let auth_key = CString::new(auth_key).expect("UTF-8 doesn't include nul");
+    let publish_key = CString::new(publish_key).expect("UTF-8 doesn't include nul");
+    let subscribe_key = CString::new(subscribe_key).expect("UTF-8 doesn't include nul");
+    let client_uuid = CString::new(client_uuid).expect("UTF-8 doesn't include nul");
+    Self {
+      auth_key,
+      publish_key,
+      subscribe_key,
+      client_uuid,
+    }
+  }
+
+  pub fn subscribe<'a, T: Send + Sync + Deserialize<'a>>(&self, channel: &str, group: &str) -> Subscription<T> {
+    let channel_c = CString::new(channel).expect("UTF-8 doesn't include nul");
+    let group_c = CString::new(group).expect("UTF-8 doesn't include nul");
+
+    let config = ChannelConfig {
+      auth_key: self.auth_key.clone(),
+      publish_key: self.publish_key.clone(),
+      subscribe_key: self.subscribe_key.clone(),
+      client_uuid: self.client_uuid.clone(),
+      channel: channel_c,
+      group: group_c,
+    };
+
+    Subscription::new(config)
+  }
+
+  pub fn publish<T: Serialize>(&self, channel: &str, group: &str, body: T) -> PublishFuture {
+    let channel_c = CString::new(channel).expect("UTF-8 doesn't include nul");
+    let group_c = CString::new(group).expect("UTF-8 doesn't include nul");
+
+    let config = ChannelConfig {
+      auth_key: self.auth_key.clone(),
+      publish_key: self.publish_key.clone(),
+      subscribe_key: self.subscribe_key.clone(),
+      client_uuid: self.client_uuid.clone(),
+      channel: channel_c,
+      group: group_c,
+    };
+
+    // TODO: we may want a context pool as each context consumes significant resources.
+    PublishFuture::new(config, body)
+  }
+}
+
+pub struct Subscription<T> {
   ctx: *mut pubnub_t,
+  rx: Receiver<Result<T, ClientError>>,
   // We hold on to this so that we can free the memory later.
   user_data: *mut SubscribeUserData<T>,
-  // We pass refs of these to C land.  We keep them around here so they will not be freed until the `Client` is dropped.
-  _channel: CString,
+  // We pass refs of these to C land.  We keep them around here so they will not be freed until the `Subscription` is dropped.
   _auth_key: CString,
   _publish_key: CString,
   _subscribe_key: CString,
-  _group: CString,
   _client_uuid: CString,
+  _channel: CString,
+  _group: CString,
+}
+
+// The pointers in `Subscription` are thread-safe, so we can implement this.
+// See https://www.pubnub.com/docs/posix-c/api-reference-configuration#Thread_safety
+unsafe impl<T> Send for Subscription<T> {}
+
+impl<'a, T: Send + Sync + Deserialize<'a>> Subscription<T> {
+  fn new(config: ChannelConfig) -> Self {
+    let ChannelConfig {
+      auth_key,
+      publish_key,
+      subscribe_key,
+      client_uuid,
+      channel,
+      group,
+    } = config;
+
+    let (tx, rx) = futures::sync::mpsc::channel::<Result<T, ClientError>>(10);
+
+    let user_data = Box::into_raw(Box::new(SubscribeUserData {
+      tx,
+      channel: channel.clone(), // TODO: can this just be a reference?
+    }));
+
+    let ctx = unsafe {
+      let ctx = pubnub_alloc();
+      pubnub_init(ctx, publish_key.as_ptr(), subscribe_key.as_ptr());
+      pubnub_set_uuid(ctx, client_uuid.as_ptr());
+      pubnub_set_auth(ctx, auth_key.as_ptr());
+      pubnub_register_callback(ctx, Some(subscribe_callback::<T>), user_data as *mut std::ffi::c_void);
+      pubnub_subscribe(ctx, channel.as_ptr(), std::ptr::null()); // TODO: technically we shouldn't call this line until the stream gets polled the first time.
+      ctx
+    };
+
+    Self {
+      ctx,
+      rx,
+      _channel: channel,
+      _auth_key: auth_key,
+      _publish_key: publish_key,
+      _subscribe_key: subscribe_key,
+      _group: group,
+      _client_uuid: client_uuid,
+      user_data,
+    }
+  }
+}
+
+impl<T: std::fmt::Debug> Stream for Subscription<T> {
+  type Item = Result<T, ClientError>;
+  type Error = ();
+
+  fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
+    self.rx.poll()
+  }
 }
 
 unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
@@ -62,103 +186,19 @@ unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
       .try_send(res)
       .map_err(|e| println!("subscribe callback unable to send {:?}", e))
       .ok();
+    // We shouldn't need to notify, because that is taken care of by the channel.
   }
 
   // TODO: verify that we are happy with this here.  PubNub docs suggest that it is ok to do operations like this inside of a callback, but not recommended (as it can make debugging harder).  Our use case is simple (a loop), so maybe we're ok?
   pubnub_subscribe(pb, ud.channel.as_ptr(), std::ptr::null());
 }
 
-impl<'a, T: Send + Sync + Deserialize<'a>> SubscribeClient<T> {
-  /// Starts a client, subscribed to the given channel, etc.
-  pub fn start(config: ClientConfig, tx: Sender<Result<T, ClientError>>) -> Result<Self, Box<dyn Error>> {
-    // TODO: client errors
-    let auth_key = CString::new(config.auth_key)?;
-    let publish_key = CString::new(config.publish_key)?;
-    let subscribe_key = CString::new(config.subscribe_key)?;
-    let channel = CString::new(config.channel)?;
-    let group = CString::new(config.group)?;
-    let client_uuid = CString::new(config.client_uuid)?;
-
-    let user_data = Box::into_raw(Box::new(SubscribeUserData {
-      tx,
-      channel: channel.clone(),
-    }));
-
-    let ctx = unsafe {
-      let ctx = pubnub_alloc();
-      pubnub_init(ctx, publish_key.as_ptr(), subscribe_key.as_ptr());
-      pubnub_set_uuid(ctx, client_uuid.as_ptr());
-      pubnub_set_auth(ctx, auth_key.as_ptr());
-      pubnub_register_callback(ctx, Some(subscribe_callback::<T>), user_data as *mut std::ffi::c_void);
-      pubnub_subscribe(ctx, channel.as_ptr(), std::ptr::null());
-      ctx
-    };
-
-    // TODO: verify that I'm not invalidating the above pointers at this point.
-    Ok(Self {
-      ctx,
-      _channel: channel,
-      _auth_key: auth_key,
-      _publish_key: publish_key,
-      _subscribe_key: subscribe_key,
-      _group: group,
-      _client_uuid: client_uuid,
-      user_data,
-    })
-  }
-}
-
-impl<T> Drop for SubscribeClient<T> {
+impl<T> Drop for Subscription<T> {
   fn drop(&mut self) {
     unsafe {
       pubnub_free(self.ctx);
       Box::from_raw(self.user_data); // This should be safe because we have cleared the mutable ref held by self.ctx
     };
-  }
-}
-
-// TODO: have a single client.
-pub struct PublishClient {
-  // We pass refs of these to C land.  We keep them around here so they will not be freed until the `Client` is dropped.
-  channel: CString,
-  auth_key: CString,
-  publish_key: CString,
-  subscribe_key: CString,
-  group: CString,
-  client_uuid: CString,
-}
-
-impl PublishClient {
-  /// Starts a client, subscribed to the given channel, etc.
-  pub fn new(config: ClientConfig) -> Result<Self, Box<dyn Error>> {
-    // TODO: client errors
-    let auth_key = CString::new(config.auth_key)?;
-    let publish_key = CString::new(config.publish_key)?;
-    let subscribe_key = CString::new(config.subscribe_key)?;
-    let channel = CString::new(config.channel)?;
-    let group = CString::new(config.group)?;
-    let client_uuid = CString::new(config.client_uuid)?;
-
-    Ok(Self {
-      channel,
-      auth_key,
-      publish_key,
-      subscribe_key,
-      group,
-      client_uuid,
-    })
-  }
-
-  pub fn publish<U: Serialize>(&mut self, msg: U) -> PublishFuture {
-    PublishFuture::new(
-      msg,
-      self.channel.clone(),       // TODO: avoid the clone
-      self.auth_key.clone(),      // TODO: avoid the clone
-      self.publish_key.clone(),   // TODO: avoid the clone
-      self.subscribe_key.clone(), // TODO: avoid the clone
-      self.group.clone(),         // TODO: avoid the clone
-      self.client_uuid.clone(),   // TODO: avoid the clone
-    )
   }
 }
 
@@ -205,17 +245,18 @@ pub struct PublishFuture {
 }
 
 impl PublishFuture {
-  fn new<T: Serialize>(
-    msg: T,
-    channel: CString,
-    auth_key: CString,
-    publish_key: CString,
-    subscribe_key: CString,
-    group: CString,
-    client_uuid: CString,
-  ) -> Self {
+  fn new<T: Serialize>(config: ChannelConfig, msg: T) -> Self {
     let msg_string = serde_json::to_string(&msg).unwrap();
     let msg_c = CString::new(msg_string).unwrap();
+    let ChannelConfig {
+      publish_key,
+      subscribe_key,
+      client_uuid,
+      auth_key,
+      channel,
+      group,
+    } = config;
+
     let ctx = unsafe {
       let ctx = pubnub_alloc();
       pubnub_init(ctx, publish_key.as_ptr(), subscribe_key.as_ptr());
@@ -311,6 +352,7 @@ impl std::error::Error for ClientError {
     }
   }
 }
+
 #[derive(Debug)]
 pub struct JsonError {
   err: serde_json::Error,
