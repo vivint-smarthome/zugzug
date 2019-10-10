@@ -109,6 +109,7 @@ pub struct Subscription<T> {
 // The pointers in `Subscription` are thread-safe, so we can implement this.
 // See https://www.pubnub.com/docs/posix-c/api-reference-configuration#Thread_safety
 unsafe impl<T> Send for Subscription<T> {}
+unsafe impl<T> Sync for Subscription<T> {}
 
 impl<'a, T: Send + Sync + Deserialize<'a>> Subscription<T> {
   fn new(config: ChannelConfig) -> Self {
@@ -286,6 +287,9 @@ impl PublishFuture {
     }
   }
 }
+
+unsafe impl Send for PublishFuture {}
+unsafe impl Sync for PublishFuture {}
 
 impl Drop for PublishFuture {
   fn drop(&mut self) {
