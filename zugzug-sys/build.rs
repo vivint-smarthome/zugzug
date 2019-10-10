@@ -70,6 +70,7 @@ fn main() {
 
     let callback_bindings = bindgen::Builder::default()
     .header(format!("{}/pubnub_callback.h", upstream_build_dir_posix.display()))
+    .clang_arg(format!("-arch {}", env::var("TARGET").expect("TARGET env variable not set. Cargo should have set it.")))
     .clang_arg(format!("-I{}", upstream_build_dir.display()))
     .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
     .clang_arg("-DPUBNUB_CALLBACK_API=1")
