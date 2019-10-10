@@ -158,13 +158,13 @@ impl<T: std::fmt::Debug> Stream for Subscription<T> {
   type Error = ClientError;
 
   fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-     match self.rx.poll() {
-        Ok(Async::Ready(Some(Ok(t)))) => Ok(Async::Ready(Some(t))),
-        Ok(Async::Ready(Some(Err(e)))) => Err(e),
-        Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
-        Ok(Async::NotReady) => Ok(Async::NotReady),
-        Err(()) => panic!("Received error from an mpsc channel, this shouldn't be possible."),
-     }
+    match self.rx.poll() {
+      Ok(Async::Ready(Some(Ok(t)))) => Ok(Async::Ready(Some(t))),
+      Ok(Async::Ready(Some(Err(e)))) => Err(e),
+      Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
+      Ok(Async::NotReady) => Ok(Async::NotReady),
+      Err(()) => panic!("Received error from an mpsc channel, this shouldn't be possible."),
+    }
   }
 }
 
@@ -176,24 +176,26 @@ unsafe extern "C" fn subscribe_callback<'a, T: Deserialize<'a>>(
 ) {
   let ud: &mut SubscribeUserData<T> = &mut *(user_data as *mut SubscribeUserData<T>); // TODO: verify that this callback can only happen once at a time, or wrap in a mutex.
   if trans == pubnub_trans_PBTT_SUBSCRIBE {
-    let res: Result<T, ClientError> = if result == pubnub_res_PNR_OK {
+    let maybe_res: Option<Result<T, ClientError>> = if result == pubnub_res_PNR_OK {
       let ptr = pubnub_get(pb);
       if !ptr.is_null() {
         let c = std::ffi::CStr::from_ptr(ptr);
         let s = c.to_str().unwrap(); // TODO: return error if that is needed.
 
-        serde_json::from_str::<T>(s).map_err(|e| ClientError::ParseError(JsonError { err: e }))
+        Some(serde_json::from_str::<T>(s).map_err(|e| ClientError::ParseError(JsonError { err: e })))
       } else {
-        Err(ClientError::NullPointerError)
+        // If the pointer is not here don't return an error, just run again; we get a null on the first call.
+        None
       }
     } else {
-      Err(ClientError::PubNub { code: result })
+      Some(Err(ClientError::PubNub { code: result }))
     };
-    ud.tx
-      .try_send(res)
-      .map_err(|e| println!("subscribe callback unable to send {:?}", e))
-      .ok();
-    // We shouldn't need to notify, because that is taken care of by the channel.
+    maybe_res.map(|res| {
+      ud.tx
+        .try_send(res)
+        .map_err(|e| println!("subscribe callback unable to send {:?}", e))
+        .ok()
+    }); // We shouldn't need to notify, because that is taken care of by the channel.
   }
 
   // TODO: verify that we are happy with this here.  PubNub docs suggest that it is ok to do operations like this inside of a callback, but not recommended (as it can make debugging harder).  Our use case is simple (a loop), so maybe we're ok?
@@ -337,7 +339,6 @@ impl Future for PublishFuture {
 
 #[derive(Debug)]
 pub enum ClientError {
-  NullPointerError,
   ParseError(JsonError),
   PollError,
   PubNub { code: pubnub_res },
@@ -346,7 +347,6 @@ pub enum ClientError {
 impl std::fmt::Display for ClientError {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match self {
-      ClientError::NullPointerError => write!(f, "PubNub client null pointer error"),
       ClientError::ParseError(e) => write!(f, "PubNub client parse error: {}", e),
       ClientError::PollError => write!(f, "PubNub client poll error"),
       ClientError::PubNub { code } => write!(f, "PubNub client error with code {}", code), // TODO: it would be nice to do these codes as an enum, but bindgen does not recommend directly building enums, as we do not own the c code.

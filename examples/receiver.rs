@@ -38,11 +38,10 @@ fn main() {
 
   let task = client.subscribe::<Stuff>(&channel, &group);
 
-  tokio::run(task.for_each(|v| {
-    match v {
-      Ok(i) => println!("whoa! a message! {:?}", i),
-      Err(e) => println!("error {:?}", e),
-    }
+  tokio::run(task.map_err(|e| {
+    println!("An error {:?}", e);
+  }).for_each(|v| {
+    println!("A message! {:?}", v);
     Ok(())
   }));
 
