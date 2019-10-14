@@ -18,6 +18,15 @@ pub mod sync {
   include!(concat!(env!("OUT_DIR"), "/sync.rs"));
 }
 
+#[allow(non_upper_case_globals)]
+#[allow(non_camel_case_types)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+#[allow(clippy::all)]
+pub mod dns {
+  include!(concat!(env!("OUT_DIR"), "/dns.rs"));
+}
+
 #[cfg(test)]
 #[cfg(feature = "sync")]
 mod sync_test {
