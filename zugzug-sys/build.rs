@@ -114,4 +114,19 @@ fn main() {
     #[cfg(feature = "dynamic")]
     println!("cargo:rustc-link-lib=pubnub_sync");
   }
+
+  let dns_bindings = bindgen::Builder::default()
+  .header(format!("{}/core/pubnub_dns_servers.h", upstream_build_dir.display()))
+  .clang_arg(format!("-I{}", upstream_build_dir.display()))
+  .clang_arg(format!("-I{}", upstream_build_dir_posix.display()))
+  .clang_arg("-DPUBNUB_CALLBACK_API=1")
+  .clang_arg("-DPUBNUB_SET_DNS_SERVERS=1")
+  .clang_arg("-DPUBNUB_THREADSAFE=1") // Makes contexts thread-safe, justifying our making them Send and Sync.
+  .blacklist_function("strtold") // u128 is not ffi-safe
+  .generate()
+  .expect("Unable to generate dns bindings");
+
+  dns_bindings
+    .write_to_file(out_path.join("dns.rs"))
+    .expect("Couldn't write bindings");
 }

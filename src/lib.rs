@@ -5,7 +5,7 @@ use futures::{Async, Future};
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 
-use zugzug_sys::callback::*;
+use zugzug_sys::{callback::*, dns::*};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
 pub struct ClientConfig {
@@ -50,6 +50,29 @@ impl Client {
     let publish_key = CString::new(publish_key).expect("UTF-8 doesn't include nul");
     let subscribe_key = CString::new(subscribe_key).expect("UTF-8 doesn't include nul");
     let client_uuid = CString::new(client_uuid).expect("UTF-8 doesn't include nul");
+
+    // This is the closest thing to an "entrypoint" this library has, so we're going to setup the
+    // system DNS servers here.
+    unsafe {
+        let mut addresses  = [pubnub_ipv4_address {ipv4: [0, 0, 0, 0]}; 2];
+        let addresses_read = pubnub_dns_read_system_servers_ipv4(addresses.as_mut_ptr(), 2);
+        if addresses_read > 0 {
+            if pubnub_dns_set_primary_server_ipv4(addresses[0]) == -1 {
+                eprintln!("Unable to set primary DNS server!");
+            } else {
+                println!("System DNS server obtained, set successfully");
+            }
+
+        } else {
+            println!("Unable to query system DNS server, falling back to 8.8.8.8");
+        }
+        if addresses_read > 1 {
+            if pubnub_dns_set_secondary_server_ipv4(addresses[1]) == -1 {
+                eprintln!("Unable to set secondary DNS server!");
+            }
+        }
+    }
+
     Self {
       auth_key,
       publish_key,
